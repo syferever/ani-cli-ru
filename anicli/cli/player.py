@@ -247,9 +247,10 @@ def run_video(video: "Video", app_cfg: "Config", title: Optional[str] = None):
             FFMPEGRouter(app_cfg).play(video, title, player=app_cfg.PLAYER, title_arg='--meta-title "{}"')
         return
     elif app_cfg.PLAYER == "mpv":
-        return MpvPlayer(app_cfg).play(video, title)
-    elif app_cfg.PLAYER == "mpv_a":
-        return MpvAndroidPlayer(app_cfg).play(video, title)
+        if os.name =='posix':
+            return MpvAndroidPlayer(app_cfg).play(video, title)
+        else:
+            return MpvPlayer(app_cfg).play(video, title)
     elif app_cfg.PLAYER == "vlc":
         return VLCPlayer(app_cfg).play(video, title)
 
