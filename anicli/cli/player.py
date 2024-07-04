@@ -183,6 +183,62 @@ class FFMPEGRouter(BasePlayer):
         subprocess.Popen(cmd, shell=True).wait()
 
 
+class MpvAndroidPlayer(BasePlayer):
+    PLAYER = "mpv_a"
+    TITLE = "--title_a"
+    HEADERS_KEY = "--http-header-fields"
+    USER_AGENT_KEY = "--user-agent"
+
+    def play_from_playlist(
+        self, videos: List["Video"], names: List[str], headers: Optional[Dict] = None, quality: int = 1080
+    ):
+
+        # TODO pass headers args from argument
+        headers = videos[0].headers
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".m3u") as temp_file:
+            playlist = generate_playlist(videos, names, quality=quality)
+            temp_file.write(playlist)
+        header_args = self._parse_headers_args(headers) if headers else ""
+        # command = f'{self.PLAYER} "{temp_file.name}" {header_args}'
+        command = f'am start --user 0 -a android.intent.action.VIEW -d "{video.url}" -n is.xyz.mpv/.MPVActivity'
+        try:
+            self.shell_execute(command)
+        finally:
+            temp_file.close()
+
+    @classmethod
+    def _parse_headers_args(cls, headers: Dict[str, Any]):
+        if not headers:
+            return ""
+        # multiple command key build List Options:
+        # shlex don't support mpv list arguments feature
+        # Note:
+        #       don't need whitespace see: man mpv, \http-header-fields
+        #                                 v
+        # --http-header-fields="Spam: egg","Foo: bar","BAZ: ZAZ"
+        comma = f"{cls.HEADERS_KEY}="
+        comma_user_agent = None
+
+        for k, v in headers.items():
+            if k.lower() == "user-agent":
+                comma_user_agent = f'{cls.USER_AGENT_KEY}="{v}"'
+                headers.pop(k)
+                if not headers:
+                    return comma_user_agent
+
+                break
+
+        comma = comma + ",".join(f'"{k}: {v}"' for k, v in headers.items())
+        return comma_user_agent + " " + comma if comma_user_agent else comma
+
+    def play(self, video: "Video", title: Optional[str] = None, *, player: Optional[str] = None, **kwargs):
+        title_arg = f"{self.TITLE}={self.quote(title)}" if title else ""
+        headers_arg = self._parse_headers_args(video.headers)
+        extra_args = self.app_cfg.PLAYER_EXTRA_ARGS
+        command = f'am start --user 0 -a android.intent.action.VIEW -d "{video.url}" -n is.xyz.mpv/.MPVActivity'
+        # command = f'{self.PLAYER} {extra_args} {title_arg} {headers_arg} "{video.url}"'
+        self.shell_execute(command)
+
 def run_video(video: "Video", app_cfg: "Config", title: Optional[str] = None):
     if app_cfg.USE_FFMPEG_ROUTE:
         if app_cfg.PLAYER == "mpv":
@@ -192,6 +248,8 @@ def run_video(video: "Video", app_cfg: "Config", title: Optional[str] = None):
         return
     elif app_cfg.PLAYER == "mpv":
         return MpvPlayer(app_cfg).play(video, title)
+    elif app_cfg.PLAYER == "mpv_a":
+        return MpvAndroidPlayer(app_cfg).play(video, title)
     elif app_cfg.PLAYER == "vlc":
         return VLCPlayer(app_cfg).play(video, title)
 
